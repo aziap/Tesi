@@ -1,0 +1,31 @@
+frr version 10.7.1
+frr defaults traditional
+hostname router-2-2
+domainname localdomain
+no ipv6 forwarding
+!
+interface eth1
+ description "area 2 internal"
+ ip address 172.16.2.2/24
+exit
+!
+interface eth2
+ description "to area 0"
+ ip address 172.30.222.22/24
+exit
+!
+interface lo
+ ip address 10.2.22.1/32
+exit
+!
+interface lo1
+ ip address 192.168.2.2/32
+exit
+!
+router ospf
+ ospf router-id 6.6.6.6
+ redistribute connected
+ network 172.16.2.0/24 area 2
+ network 172.30.222.0/24 area 0
+exit
+!

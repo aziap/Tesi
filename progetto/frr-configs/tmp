@@ -1,0 +1,9 @@
+docker exec clab-demonet-router-2-2 vtysh -c "
+conf t
+interface lo1
+ ip address 192.168.2.2/32
+exit
+exit
+cop run sta
+sho run"
+

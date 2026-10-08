@@ -1,0 +1,167 @@
+name: demonet
+
+topology:
+  defaults:
+    kind: linux
+  
+  groups:
+    frr_router:
+      image: frr-snmp:10.7.1
+      network-mode: none
+      binds:
+        - ./frr-configs/shared/daemons:/etc/frr/daemons:ro
+        - ./frr-configs/shared/snmpd.conf:/etc/frr/snmpd.conf:ro
+        - ./frr-configs/shared/vtysh.conf:/etc/frr/vtysh.conf:ro
+        - ./frr-configs/__clabNodeName__/:/etc/frr/
+        - ./frr_exporter/frr_exporter:/bin/frr_exporter
+      
+  nodes:
+  #=========
+  # Router  
+  #=========
+  # Area 0
+    router-core-1:
+      group: frr_router
+    router-core-2:
+      group: frr_router
+  # Aera 1
+    router-1-1:
+      group: frr_router
+    router-1-2:
+      group: frr_router
+  # Area 2
+    router-2-1:
+      group: frr_router
+    router-2-2:
+      group: frr_router
+      
+  #============
+  # Switches
+  #============
+    switch1:
+      kind: bridge
+  
+  #============
+  # Prometheus
+  #============
+    prometheus:
+      kind: linux
+      image: prom/prometheus:latest
+      ports:  
+        - 9090:9090
+      binds:
+        - ./prometheus/config/:/etc/prometheus/
+        - ./prometheus/data/:/prometheus/
+      restart-policy: "no"
+      cmd: |
+        --config.file=/etc/prometheus/prometheus.yml
+        --enable-feature=promql-experimental-functions
+        --log.level=debug
+      exec:
+        - ip addr add 172.40.11.2/24 dev eth1
+        - ip route replace default via 172.40.11.1 dev eth1
+        - ip route add 172.18.224.0/20 via 172.20.20.1 dev eth0
+  
+  #===============  
+  # SNMP Exporter
+  #===============
+    snmp-exporter:
+        kind: linux
+        image: prom/snmp-exporter:latest
+        ports:
+          - 9116:9116
+        binds:
+          - ./snmp-exporter/snmp.yml:/etc/snmp_exporter/snmp.yml:ro
+        exec:
+          - ip addr add 172.40.11.3/24 dev eth1
+          - ip route replace default via 172.40.11.1 dev eth1
+          - ip route add 172.18.224.0/20 via 172.20.20.1 dev eth0
+  
+  #===============  
+  # cAdvisor
+  #===============
+    cadvisor:
+        kind: linux
+        image: ghcr.io/google/cadvisor:0.60.5
+        binds:
+          - /:/rootfs:ro
+          - /var/run:/var/run:ro
+          - /sys:/sys:ro
+          - /var/lib/docker:/var/lib/docker:ro
+        devices:
+          - /dev/kmsg
+        ports: 
+          - 8080:8080
+        cmd: |
+            --docker_only=true
+            --housekeeping_interval=15s
+            --store_container_labels=false
+            --disable_metrics=percpu,sched,tcp,udp,diskIO,hugetlb,referenced_memory
+        exec:
+          - ip addr add 172.40.11.4/24 dev eth1
+          - ip route replace default via 172.40.11.1 dev eth1
+          - ip route add 172.18.224.0/20 via 172.20.20.1 dev eth0
+  
+  #===============  
+  # Grafana
+  #===============
+    grafana:
+      kind: linux
+      image: grafana/grafana:latest
+      ports:
+        - 3000:3000
+      binds:
+        - ./grafana/:/var/lib/grafana/
+      exec:
+        - ip addr add 172.40.11.5/24 dev eth1
+        - ip route replace default via 172.40.11.1 dev eth1
+        - ip route add 172.18.224.0/20 via 172.20.20.1 dev eth0
+      
+  #===============  
+  # Links
+  #===============
+  links:
+    # routers
+    # a0
+    - endpoints: ["router-core-1:eth1", "router-core-2:eth1"]
+    - endpoints: ["router-core-1:eth2", "router-core-2:eth2"]
+    - endpoints: ["router-core-1:eth3", "router-1-1:eth2"]
+    - endpoints: ["router-core-1:eth4", "router-2-1:eth2"]
+    - endpoints: ["router-core-2:eth3", "router-1-2:eth2"]
+    - endpoints: ["router-core-2:eth4", "router-2-2:eth2"]
+    # a1
+    - endpoints: ["router-1-1:eth1", "router-1-2:eth1"]
+    - endpoints: ["router-1-1:eth4", "switch1:port1"]
+    # a2
+    - endpoints: ["router-2-1:eth1", "router-2-2:eth1"]
+    # monitoring
+    - endpoints: ["prometheus:eth1", "switch1:port2"]
+    - endpoints: ["snmp-exporter:eth1", "switch1:port3"]
+    - endpoints: ["cadvisor:eth1", "switch1:port4"]
+    - endpoints: ["grafana:eth1", "switch1:port5"]
+    # router loopback interfaces
+    - type: dummy
+      endpoint:
+        node: router-core-1
+        interface: lo1
+    - type: dummy
+      endpoint:
+        node: router-core-2
+        interface: lo1  
+    - type: dummy
+      endpoint:
+        node: router-1-1
+        interface: lo1
+    - type: dummy
+      endpoint:
+        node: router-1-2
+        interface: lo1
+    - type: dummy
+      endpoint:
+        node: router-2-1
+        interface: lo1
+    - type: dummy
+      endpoint:
+        node: router-2-2
+        interface: lo1
+        
